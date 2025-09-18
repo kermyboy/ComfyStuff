@@ -71,6 +71,15 @@ ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface
 ENV HF_HOME=/workspace/.cache/huggingface
 EXPOSE 8188
 
+# Install JupyterLab
+RUN pip install --no-cache-dir jupyterlab
+
+# Expose Jupyter port
+EXPOSE 8888
+
+# Start ComfyUI + Jupyter (simple background launch)
+CMD jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root & \
+    python main.py
 # --- Entrypoint ---
 RUN printf '%s\n' '#!/usr/bin/env bash' \
   'set -e' \
