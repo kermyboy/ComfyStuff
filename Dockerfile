@@ -50,6 +50,11 @@ RUN git clone https://github.com/Gourieff/ComfyUI-ReActor.git && \
     git clone https://github.com/rgthree/rgthree-comfy.git && \
     git clone https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
 
+# ---- Disable ReActor SFW filter ----
+RUN sed -i 's/return is_nsfw/return False/' /workspace/ComfyUI/custom_nodes/ComfyUI_ReActor/scripts/reactor_sfw.py || true && \
+    sed -i 's/if nsfw_image.*:/if False:/' /workspace/ComfyUI/custom_nodes/ComfyUI_ReActor/scripts/reactor_sfw.py || true
+
+
 # --- Model + IO dirs ---
 RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
              /workspace/ComfyUI/models/insightface/buffalo_l \
