@@ -1,10 +1,12 @@
+# CUDA 12.1 runtime with cuDNN, Ubuntu 22.04 base
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # System deps
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    python3.10 python3.10-venv python3.10-distutils ca-certificates \
-    git curl wget ffmpeg libgl1 build-essential \
+    python3.10 python3.10-venv python3.10-distutils \
+    git curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
  && rm -rf /var/lib/apt/lists/*
 
 # ComfyUI
@@ -16,10 +18,17 @@ WORKDIR /workspace/ComfyUI
 RUN python3.10 -m venv .venv
 ENV PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
 
-# Python deps
-RUN python -m pip install --upgrade pip setuptools wheel && \
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install onnx==1.16.0 onnxruntime-gpu==1.18.1 opencv-python insightface==0.7.3
+# Python deps (pinned for CUDA 12.1)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+      "torch==2.3.1+cu121" "torchvision==0.18.1+cu121" \
+      --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install --no-cache-dir \
+      onnx==1.16.0 \
+      onnxruntime-gpu==1.18.1 \
+      opencv-python-headless==4.9.0.80 \
+      insightface==0.7.3
 
 # Custom nodes
 WORKDIR /workspace/ComfyUI/custom_nodes
