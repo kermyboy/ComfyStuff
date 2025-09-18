@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # --- Custom nodes ---
 WORKDIR /workspace/ComfyUI/custom_nodes
-RUN git clone https://github.com/Gourieff/ComfyUI_ReActor.git && \
+RUN git clone https://github.com/Gourieff/ComfyUI-ReActor.git && \
     git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
     git clone https://github.com/rgthree/rgthree-comfy.git && \
     git clone https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
