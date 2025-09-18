@@ -1,37 +1,35 @@
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-
 ENV DEBIAN_FRONTEND=noninteractive
-# Speed up pip & avoid interactive debconf
 ENV PIP_DEFAULT_TIMEOUT=120 PIP_NO_INPUT=1
 
-# ---- System deps ----
+# --- System deps (ADDED python3.10-dev, cython3, cmake, ninja) ---
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    python3.10 python3.10-venv python3.10-distutils \
+    python3.10 python3.10-venv python3.10-distutils python3.10-dev \
     git curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
+    cmake ninja-build cython3 \
  && rm -rf /var/lib/apt/lists/*
 
-# ---- ComfyUI ----
+# --- ComfyUI ---
 WORKDIR /workspace
 RUN git clone https://github.com/comfyanonymous/ComfyUI.git
 WORKDIR /workspace/ComfyUI
 
-# Use Python 3.10 so InsightFace has wheels
+# Python 3.10 venv
 RUN python3.10 -m venv .venv
 ENV PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
 
-# ---- Python deps (split + pinned to dodge NumPy 2 and source builds) ----
-# 1) Tooling + NumPy 1.26 first (many libs still expect it)
+# --- Python deps (split + pinned; PREPIN numpy, pin cython to <3) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir "numpy==1.26.4"
+    pip install --no-cache-dir "numpy==1.26.4" "cython<3"
 
-# 2) Torch (CUDA 12.1 wheels)
+# Torch CUDA 12.1 wheels
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
       "torch==2.3.1+cu121" "torchvision==0.18.1+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
-# 3) ONNX runtime + CV stack (pin headless OpenCV; lock a few fragile libs)
+# ONNX + CV stack
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
       onnx==1.16.0 \
@@ -41,18 +39,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "pillow<10.3" \
       "protobuf<5"
 
-# 4) InsightFace (now safely resolves against the pins above)
+# InsightFace (now it can compile if it must)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir insightface==0.7.3
 
-# ---- Custom nodes ----
+# --- Custom nodes ---
 WORKDIR /workspace/ComfyUI/custom_nodes
 RUN git clone https://github.com/Gourieff/ComfyUI_ReActor.git && \
     git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
     git clone https://github.com/rgthree/rgthree-comfy.git && \
     git clone https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
 
-# ---- Model + IO dirs ----
+# --- Model + IO dirs ---
 RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
              /workspace/ComfyUI/models/insightface/buffalo_l \
              /workspace/ComfyUI/custom_nodes/ComfyUI_ReActor/models \
@@ -63,12 +61,12 @@ RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
              /workspace/ComfyUI/input \
              /workspace/ComfyUI/output
 
-# ---- Env & port ----
+# --- Env & port ---
 ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface
 ENV HF_HOME=/workspace/.cache/huggingface
 EXPOSE 8188
 
-# ---- Entrypoint ----
+# --- Entrypoint ---
 RUN printf '%s\n' '#!/usr/bin/env bash' \
   'set -e' \
   'cd /workspace/ComfyUI' \
