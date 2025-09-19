@@ -6,7 +6,7 @@ on:
     branches: [ "main" ]
     tags:
       - "v*"            # e.g. v6, v6.1, v6.1.0
-  workflow_dispatch:     # manual run with optional version input
+  workflow_dispatch:
     inputs:
       version:
         description: "Optional version tag to publish (e.g. v6)"
@@ -21,15 +21,19 @@ jobs:
       packages: write
       id-token: write
     env:
-      IMAGE_REPO: kermatron/comfystuff   # <-- change if needed
+      IMAGE_REPO: kermatron/comfystuff
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Check required secrets
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] || { echo "Missing DOCKERHUB_USERNAME"; exit 1; }
-          [ - n "${{ secrets.DOCKERHUB_TOKEN }}" ]   || { echo "Missing DOCKERHUB_TOKEN"; exit 1; }
+          : "${DOCKERHUB_USERNAME:?Missing DOCKERHUB_USERNAME}"
+          : "${DOCKERHUB_TOKEN:?Missing DOCKERHUB_TOKEN}"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -40,21 +44,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Compute tags:
-      # - On tag push (v*, e.g. v6): add `${{ github.ref_name }}` and `latest`
-      # - On main branch push: only `latest`
-      # - On manual run with input.version: add that version and `latest`
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_REPO }}
           tags: |
-            # tag events like "v6" -> publish :v6
+            # Tag events like "v6" -> publish :v6
             type=ref,event=tag
-            # latest on main
+            # latest on default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # manual override: workflow_dispatch input
+            # manual run override
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
 
       - name: Show computed tags
@@ -67,7 +67,7 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64            # CUDA needs amd64
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
