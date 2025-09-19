@@ -83,18 +83,6 @@ RUN set -eux; \
       sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
     fi
 
-# --- Persistent model + IO dirs ON THE VOLUME under /workspace ---
-RUN mkdir -p /workspace/models/{insightface/antelopev2,insightface/buffalo_l,checkpoints,vae,clip,wan,loras,controlnet,upscale_models,embeddings} \
-           /workspace/{input,output} \
- && mkdir -p /workspace/reactor_models \
- && ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models
-
-# --- Point ComfyUI paths at the persistent volume (build-time) ---
-RUN rm -rf /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output && \
-    ln -s /workspace/models /opt/ComfyUI/models && \
-    ln -s /workspace/input  /opt/ComfyUI/input  && \
-    ln -s /workspace/output /opt/ComfyUI/output
-
 # --- JupyterLab (optional) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --no-cache-dir jupyterlab
