@@ -9,25 +9,27 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore \
     PYTHONUNBUFFERED=1 \
-    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True \
+    HF_HOME=/workspace/.cache/huggingface \
+    INSIGHTFACE_HOME=/workspace/models/insightface
 
 # --- System deps ---
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && apt-get install -y --no-install-recommends \
-      python3.10 python3.10-dev python3-pip python3-distutils \
+      python3.10 python3.10-dev python3-pip \
       git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
       cmake ninja-build cython3 ca-certificates \
  && git lfs install \
  && rm -rf /var/lib/apt/lists/*
 
-# --- Workdir & sources ---
-WORKDIR /workspace
+# --- Code lives OUTSIDE the /workspace mount to avoid being clobbered ---
+WORKDIR /opt
 RUN --mount=type=cache,target=/root/.cache/git \
-    git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git
-WORKDIR /workspace/ComfyUI
+    git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git /opt/ComfyUI
+WORKDIR /opt/ComfyUI
 
-# --- Python deps into system Python ---
+# --- Python deps into system Python (RunPod-friendly, no venv) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --upgrade pip setuptools wheel && \
     python3.10 -m pip install --no-cache-dir \
@@ -57,38 +59,37 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -f requirements.txt ]; then python3.10 -m pip install --no-cache-dir -r requirements.txt; fi
 
-# --- Custom nodes ---
-WORKDIR /workspace/ComfyUI/custom_nodes
+# --- Custom nodes (baked into image under /opt) ---
+WORKDIR /opt/ComfyUI/custom_nodes
 RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/Gourieff/ComfyUI-ReActor.git && \
     git clone --depth=1 https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
     git clone --depth=1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth=1 https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
 
-# ---- Disable ReActor SFW filter ----
+# ---- Disable ReActor SFW filter (intentional) ----
 RUN set -eux; \
-    f="/workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
+    f="/opt/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
     if [ -f "$f" ]; then \
       sed -i 's/return is_nsfw/return False/' "$f" || true; \
       sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
     fi
 
-# --- Model + IO dirs ---
-RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
-             /workspace/ComfyUI/models/insightface/buffalo_l \
-             /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/models \
-             /workspace/ComfyUI/models/checkpoints \
-             /workspace/ComfyUI/models/vae \
-             /workspace/ComfyUI/models/clip \
-             /workspace/ComfyUI/models/wan \
-             /workspace/ComfyUI/input \
-             /workspace/ComfyUI/output
+# --- Persistent model + IO dirs ON THE VOLUME under /workspace ---
+# Keep all large assets here so they survive across pods
+RUN mkdir -p /workspace/models/insightface/antelopev2 \
+             /workspace/models/insightface/buffalo_l \
+             /workspace/models/checkpoints \
+             /workspace/models/vae \
+             /workspace/models/clip \
+             /workspace/models/wan \
+             /workspace/input \
+             /workspace/output \
+    # ReActor expects a models dir inside its tree; symlink it to the volume
+ && mkdir -p /workspace/reactor_models \
+ && ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models
 
-# --- Caches & runtime env ---
-ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface \
-    HF_HOME=/workspace/.cache/huggingface
-
-# --- JupyterLab (optional, system Python) ---
+# --- JupyterLab (optional) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --no-cache-dir jupyterlab
 
@@ -100,8 +101,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
 
 # --- Startup ---
+# Note: start.sh originally cd'd into /workspace/ComfyUI.
+# Patch it to use /opt/ComfyUI so code isn't hidden by the /workspace mount.
 WORKDIR /workspace
 COPY --chmod=755 start.sh /usr/local/bin/start.sh
-RUN sed -i 's/\r$//' /usr/local/bin/start.sh
+RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
+ && sed -i 's#/workspace/ComfyUI#/opt/ComfyUI#' /usr/local/bin/start.sh
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]
