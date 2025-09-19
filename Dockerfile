@@ -61,8 +61,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "scikit-image<0.23" \
       "pillow<10.3" \
       "protobuf<5"
-
-# --- InsightFace deps first (prevent resolver fights), then InsightFace w/o deps ---
+      
+# --- InsightFace deps first (prevent resolver fights) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
       "scipy==1.11.4" \
@@ -70,11 +70,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "prettytable==3.10.0" \
       "tqdm==4.66.5"
 
-# Install InsightFace but keep our ORT/OpenCV pins intact
+# Install InsightFace but force binary wheels; if none, fall back to 0.7.2.post0
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --no-deps insightface==0.7.3
-# If you hit a wheel availability issue, drop to:
-# RUN pip install --no-cache-dir --no-deps insightface==0.7.2.post0
+    pip install --no-cache-dir --no-deps --no-build-isolation --prefer-binary "insightface==0.7.3" \
+  || pip install --no-cache-dir --no-deps --no-build-isolation --prefer-binary "insightface==0.7.2.post0"
+
 
 # --- Custom nodes via archives (fast; cacheable; no .git) ---
 WORKDIR /workspace/ComfyUI/custom_nodes
