@@ -5,15 +5,19 @@ set -Eeuo pipefail
 if [[ "${ENABLE_JUPYTER:-0}" == "1" ]]; then
   : "${JUPYTER_IP:=0.0.0.0}"
   : "${JUPYTER_PORT:=8888}"
-  echo "Starting JupyterLab on ${JUPYTER_IP}:${JUPYTER_PORT} (no auth)..."
-nohup jupyter lab \
-  --ip="${JUPYTER_IP:-0.0.0.0}" \
-  --port="${JUPYTER_PORT:-8888}" \
-  --no-browser --allow-root \
-  --ServerApp.root_dir=/workspace \
-  --ServerApp.base_url='/' \
-  --ServerApp.token='' --ServerApp.password='' \
-  >/var/log/jupyter.log 2>&1 &
+  echo "Starting JupyterLab on ${JUPYTER_IP}:${JUPYTER_PORT} (no auth, proxy-friendly)..."
+  nohup jupyter lab \
+    --ip="${JUPYTER_IP}" \
+    --port="${JUPYTER_PORT}" \
+    --no-browser --allow-root \
+    --ServerApp.root_dir=/workspace \
+    --ServerApp.base_url='/' \
+    --ServerApp.trust_xheaders=True \
+    --ServerApp.allow_remote_access=True \
+    --ServerApp.allow_origin='*' \
+    --ServerApp.disable_check_xsrf=True \
+    --ServerApp.token='' --ServerApp.password='' \
+    >/var/log/jupyter.log 2>&1 &
 fi
 
 # --- Ensure symlinks point to persistent volume every start ---
