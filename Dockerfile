@@ -23,6 +23,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
  && git lfs install \
  && rm -rf /var/lib/apt/lists/*
 
+
+
 # --- Code lives OUTSIDE the /workspace mount to avoid being clobbered ---
 WORKDIR /opt
 RUN --mount=type=cache,target=/root/.cache/git \
@@ -92,6 +94,11 @@ RUN mkdir -p /workspace/models/insightface/antelopev2 \
     # ReActor expects a models dir inside its tree; symlink it to the volume
  && mkdir -p /workspace/reactor_models \
  && ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models
+ 
+RUN rm -rf /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output && \
+    ln -s /workspace/models /opt/ComfyUI/models && \
+    ln -s /workspace/input  /opt/ComfyUI/input  && \
+    ln -s /workspace/output /opt/ComfyUI/output
 
 # --- JupyterLab (optional) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
