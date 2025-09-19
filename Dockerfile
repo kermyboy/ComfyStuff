@@ -71,22 +71,26 @@ ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface
 ENV HF_HOME=/workspace/.cache/huggingface
 EXPOSE 8188
 
-# Install JupyterLab
+
+# Ensure we are in /workspace
+# Ensure we are in /workspace
+WORKDIR /workspace
+
+# Install JupyterLab into the same venv (PATH already points to it)
 RUN pip install --no-cache-dir jupyterlab
 
-# Expose Jupyter port
-EXPOSE 8888
+# Fix: correct plugin path is ComfyUI-ReActor (hyphen), not ComfyUI_ReActor (underscore)
+# Disable ReActor SFW filter (best-effort; ignore if file layout changes upstream)
+RUN sed -i 's/return is_nsfw/return False/' /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py || true && \
+    sed -i 's/if nsfw_image.*:/if False:/' /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py || true
 
-# Start ComfyUI + Jupyter (simple background launch)
-CMD jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root & \
-    python main.py
-# --- Entrypoint ---
-RUN printf '%s\n' '#!/usr/bin/env bash' \
-  'set -e' \
-  'cd /workspace/ComfyUI' \
-  'source .venv/bin/activate' \
-  'export INSIGHTFACE_HOME="/workspace/ComfyUI/models/insightface"' \
-  'exec python main.py --listen 0.0.0.0 --port 8188 "$@"' \
-  > /workspace/start.sh && chmod +x /workspace/start.sh
+# Copy the start script and make it executable
+COPY start.sh /workspace/start.sh
+RUN chmod +x /workspace/start.sh
 
+# Expose UI ports once
+EXPOSE 8188 8888
+
+# Single, unambiguous entrypoint
 ENTRYPOINT ["/workspace/start.sh"]
+
