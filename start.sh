@@ -6,14 +6,14 @@ if [[ "${ENABLE_JUPYTER:-0}" == "1" ]]; then
   : "${JUPYTER_IP:=0.0.0.0}"
   : "${JUPYTER_PORT:=8888}"
   echo "Starting JupyterLab on ${JUPYTER_IP}:${JUPYTER_PORT} (no auth)..."
-  nohup jupyter lab \
-    --ip="${JUPYTER_IP}" \
-    --port="${JUPYTER_PORT}" \
-    --no-browser \
-    --allow-root \
-    --ServerApp.token='' \
-    --ServerApp.password='' \
-    >/var/log/jupyter.log 2>&1 &
+nohup jupyter lab \
+  --ip="${JUPYTER_IP:-0.0.0.0}" \
+  --port="${JUPYTER_PORT:-8888}" \
+  --no-browser --allow-root \
+  --ServerApp.root_dir=/workspace \
+  --ServerApp.base_url='/' \
+  --ServerApp.token='' --ServerApp.password='' \
+  >/var/log/jupyter.log 2>&1 &
 fi
 
 # --- Ensure symlinks point to persistent volume every start ---
