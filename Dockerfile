@@ -51,14 +51,14 @@ RUN git clone https://github.com/Gourieff/ComfyUI-ReActor.git && \
     git clone https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
 
 # ---- Disable ReActor SFW filter ----
-RUN sed -i 's/return is_nsfw/return False/' /workspace/ComfyUI/custom_nodes/ComfyUI_ReActor/scripts/reactor_sfw.py || true && \
-    sed -i 's/if nsfw_image.*:/if False:/' /workspace/ComfyUI/custom_nodes/ComfyUI_ReActor/scripts/reactor_sfw.py || true
+RUN sed -i 's/return is_nsfw/return False/' /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py || true && \
+    sed -i 's/if nsfw_image.*:/if False:/' /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py || true
 
 
 # --- Model + IO dirs ---
 RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
              /workspace/ComfyUI/models/insightface/buffalo_l \
-             /workspace/ComfyUI/custom_nodes/ComfyUI_ReActor/models \
+             /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/models \
              /workspace/ComfyUI/models/checkpoints \
              /workspace/ComfyUI/models/vae \
              /workspace/ComfyUI/models/clip \
@@ -78,11 +78,6 @@ WORKDIR /workspace
 
 # Install JupyterLab into the same venv (PATH already points to it)
 RUN pip install --no-cache-dir jupyterlab
-
-# Fix: correct plugin path is ComfyUI-ReActor (hyphen), not ComfyUI_ReActor (underscore)
-# Disable ReActor SFW filter (best-effort; ignore if file layout changes upstream)
-RUN sed -i 's/return is_nsfw/return False/' /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py || true && \
-    sed -i 's/if nsfw_image.*:/if False:/' /workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py || true
 
 # Copy the start script and make it executable
 COPY start.sh /workspace/start.sh
