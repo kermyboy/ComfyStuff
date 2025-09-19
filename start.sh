@@ -29,6 +29,11 @@ for d in models input output; do
   fi
 done
 
+# --- Ensure default model subfolders exist (moved from Dockerfile) ---
+mkdir -p /workspace/models/{insightface/antelopev2,insightface/buffalo_l,checkpoints,vae,clip,wan,loras,controlnet,upscale_models,embeddings}
+mkdir -p /workspace/reactor_models
+ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models
+
 # --- Start ComfyUI ---
 cd /opt/ComfyUI
 exec python3.10 main.py --listen 0.0.0.0 --port "${COMFY_PORT:-8188}"
