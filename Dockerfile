@@ -102,4 +102,10 @@ WORKDIR /workspace
 COPY start.sh /workspace/start.sh
 RUN chmod +x /workspace/start.sh
 
-ENTRYPOINT ["/workspace/start.sh"]
+# put this near the end, before ENTRYPOINT
+# ensure start.sh is next to your Dockerfile (not outside the build context)
+COPY --chmod=755 start.sh /usr/local/bin/start.sh
+# strip CRLF if the file was edited on Windows
+RUN sed -i 's/\r$//' /usr/local/bin/start.sh
+
+ENTRYPOINT ["/usr/local/bin/start.sh"]
