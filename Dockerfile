@@ -42,7 +42,7 @@ RUN python3.10 -m venv .venv
 ENV PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# --- Python deps ---
+# --- Core Python pins (keep wheels only; speed + stability) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir "numpy==1.26.4"
 
@@ -62,11 +62,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "pillow<10.3" \
       "protobuf<5"
 
-# --- InsightFace ---
+# --- InsightFace deps first (prevent resolver fights), then InsightFace w/o deps ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir insightface==0.7.3
+    pip install --no-cache-dir \
+      "scipy==1.11.4" \
+      "easydict==1.13" \
+      "prettytable==3.10.0" \
+      "tqdm==4.66.5"
 
-# --- Custom nodes via archives (shallow-by-default) ---
+# Install InsightFace but keep our ORT/OpenCV pins intact
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --no-deps insightface==0.7.3
+# If you hit a wheel availability issue, drop to:
+# RUN pip install --no-cache-dir --no-deps insightface==0.7.2.post0
+
+# --- Custom nodes via archives (fast; cacheable; no .git) ---
 WORKDIR /workspace/ComfyUI/custom_nodes
 RUN set -eux; \
     mkdir -p ComfyUI-ReActor && \
@@ -82,7 +92,7 @@ RUN set -eux; \
     curl -L "https://codeload.github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent/tar.gz/${WAN_REF}" \
       | tar -xz --strip-components=1 -C ComfyUI--Wan22FirstLastFrameToVideoLatent
 
-# ---- Disable ReActor SFW filter (leave non-fatal) ----
+# ---- Disable ReActor SFW filter (non-fatal) ----
 RUN set -eux; f="/workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
     if [ -f "$f" ]; then \
       sed -i 's/return is_nsfw/return False/' "$f" || true; \
