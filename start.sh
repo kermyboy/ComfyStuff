@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start JupyterLab
+# Activate ComfyUI venv
+source /workspace/ComfyUI/.venv/bin/activate
+
+# Start JupyterLab (in background)
 jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root &
 
-# Start ComfyUI (adjust the path if your ComfyUI lives elsewhere)
+# Start ComfyUI
 cd /workspace/ComfyUI
-python main.py --listen 0.0.0.0 --port 8188
+exec python main.py --listen 0.0.0.0 --port 8188
