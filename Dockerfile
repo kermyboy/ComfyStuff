@@ -1,7 +1,5 @@
 # CUDA 12.1 + cuDNN8 on Ubuntu 22.04
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-
-# Use bash for RUN so `source` works if needed
 SHELL ["/bin/bash", "-lc"]
 
 # --- Base env ---
@@ -17,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && apt-get install -y --no-install-recommends \
-      python3.10 python3.10-venv python3.10-distutils python3.10-dev \
+      python3.10 python3.10-dev python3-pip python3-distutils \
       git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
       cmake ninja-build cython3 ca-certificates \
  && git lfs install \
@@ -27,31 +25,23 @@ RUN --mount=type=cache,target=/var/cache/apt \
 WORKDIR /workspace
 RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git
-
-# --- Create and verify the venv exactly where start.sh expects it ---
 WORKDIR /workspace/ComfyUI
-RUN python3.10 -m venv .venv \
- && . .venv/bin/activate \
- && python -V \
- && pip install --upgrade pip setuptools wheel
 
-# Make the venv discoverable at runtime (even if shells change PATH)
-ENV VIRTUAL_ENV=/workspace/ComfyUI/.venv
-ENV PATH="$VIRTUAL_ENV/bin:${PATH}"
-
-# --- Python deps (pre-pin numpy; cython <3 avoids ABI grief) ---
+# --- Python deps into system Python ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir "numpy==1.26.4" "cython<3"
+    python3.10 -m pip install --upgrade pip setuptools wheel && \
+    python3.10 -m pip install --no-cache-dir \
+      "numpy==1.26.4" "cython<3"
 
 # --- PyTorch CUDA 12.1 wheels ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
+    python3.10 -m pip install --no-cache-dir \
       "torch==2.3.1+cu121" "torchvision==0.18.1+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
 # --- ONNX + CV stack ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
+    python3.10 -m pip install --no-cache-dir \
       onnx==1.16.0 \
       onnxruntime-gpu==1.18.1 \
       opencv-python-headless==4.9.0.80 \
@@ -61,13 +51,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # --- InsightFace ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir insightface==0.7.3
+    python3.10 -m pip install --no-cache-dir insightface==0.7.3
 
-# --- (Optional but recommended) Install ComfyUI’s own Python requirements ---
-# If the repo has requirements, install them into the same venv.
-# This prevents runtime surprises where modules are missing.
+# --- (Optional) Repo requirements if present ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+    if [ -f requirements.txt ]; then python3.10 -m pip install --no-cache-dir -r requirements.txt; fi
 
 # --- Custom nodes ---
 WORKDIR /workspace/ComfyUI/custom_nodes
@@ -100,9 +88,9 @@ RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
 ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface \
     HF_HOME=/workspace/.cache/huggingface
 
-# --- JupyterLab (in same venv) ---
+# --- JupyterLab (optional, system Python) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir jupyterlab
+    python3.10 -m pip install --no-cache-dir jupyterlab
 
 # --- Ports ---
 EXPOSE 8188 8888
@@ -112,13 +100,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
 
 # --- Startup ---
-# Copy once; put it where PATH can find it
+WORKDIR /workspace
 COPY --chmod=755 start.sh /usr/local/bin/start.sh
-# Strip CRLF if edited on Windows
 RUN sed -i 's/\r$//' /usr/local/bin/start.sh
 
-# Final sanity check: ensure venv exists so start.sh doesn’t blow up
-RUN test -f /workspace/ComfyUI/.venv/bin/activate
-
-WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/start.sh"]
