@@ -6,31 +6,40 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_NO_INPUT=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     PYTHONUNBUFFERED=1 \
-    # Optional: helps PyTorch memory fragmentation in long runs
-    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True \
+    INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface \
+    HF_HOME=/workspace/.cache/huggingface \
+    VIRTUAL_ENV=/workspace/ComfyUI/.venv \
+    PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
 
-# --- System deps ---
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
+# --- System deps (with APT cache mounts) ---
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt/lists \
+    apt-get update -y && apt-get install -y --no-install-recommends \
       python3.10 python3.10-venv python3.10-distutils python3.10-dev \
-      git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
-      cmake ninja-build cython3 \
- && git lfs install \
- && rm -rf /var/lib/apt/lists/*
+      git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 \
+      # keep ONLY what you actually need at runtime; drop toolchains
+      && git lfs install \
+      && rm -rf /var/lib/apt/lists/*
 
-# --- Workdir & sources ---
 WORKDIR /workspace
-RUN git clone https://github.com/comfyanonymous/ComfyUI.git
+
+# --- Pin the exact ComfyUI commit so layer caches stick ---
+ARG COMFYUI_REF=07f9b2c0a6b1b0c942f1c6d0f2e0d6e2c21f8d77
+RUN git clone --depth 1 --branch master https://github.com/comfyanonymous/ComfyUI.git && \
+    cd ComfyUI && git fetch --depth 1 origin ${COMFYUI_REF} && git checkout ${COMFYUI_REF}
+
 WORKDIR /workspace/ComfyUI
 
 # --- Python 3.10 venv ---
-RUN python3.10 -m venv .venv
-ENV PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
+RUN python3.10 -m venv .venv && . .venv/bin/activate && \
+    python -m pip install --upgrade pip setuptools wheel
 
-# --- Python deps (pre-pin numpy; cython <3 avoids ABI grief) ---
+# --- Python deps (pre-pin numpy; cython not installed unless you truly need it) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir "numpy==1.26.4" "cython<3"
+    pip install --no-cache-dir "numpy==1.26.4"
 
 # --- PyTorch CUDA 12.1 wheels ---
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -38,7 +47,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "torch==2.3.1+cu121" "torchvision==0.18.1+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
-# --- ONNX + CV stack (pins chosen to avoid protobuf & skimage breaks) ---
+# --- ONNX + CV stack (all wheels; no build toolchain needed) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
       onnx==1.16.0 \
@@ -48,20 +57,23 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "pillow<10.3" \
       "protobuf<5"
 
-# --- InsightFace ---
+# --- InsightFace (wheel only) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir insightface==0.7.3
 
-# --- Custom nodes ---
+# --- Custom nodes (shallow clones, pinned for caching) ---
 WORKDIR /workspace/ComfyUI/custom_nodes
-RUN git clone https://github.com/Gourieff/ComfyUI-ReActor.git && \
-    git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
-    git clone https://github.com/rgthree/rgthree-comfy.git && \
-    git clone https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
+ARG REACTOR_REF=master
+ARG IPAP_REF=master
+ARG RG3_REF=master
+ARG WAN_REF=master
+RUN git clone --depth 1 --branch ${REACTOR_REF} https://github.com/Gourieff/ComfyUI-ReActor.git && \
+    git clone --depth 1 --branch ${IPAP_REF} https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
+    git clone --depth 1 --branch ${RG3_REF} https://github.com/rgthree/rgthree-comfy.git && \
+    git clone --depth 1 --branch ${WAN_REF} https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
 
-# ---- Disable ReActor SFW filter (brittle; prefer a toggle if upstream adds one) ----
-RUN set -eux; \
-    f="/workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
+# ---- Disable ReActor SFW filter (leave as-is but make it non-fatal) ----
+RUN set -eux; f="/workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
     if [ -f "$f" ]; then \
       sed -i 's/return is_nsfw/return False/' "$f" || true; \
       sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
@@ -76,30 +88,27 @@ RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
              /workspace/ComfyUI/models/clip \
              /workspace/ComfyUI/models/wan \
              /workspace/ComfyUI/input \
-             /workspace/ComfyUI/output
+             /workspace/ComfyUI/output \
+             /workspace/.cache/huggingface
 
-# --- Caches & runtime env ---
-ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface \
-    HF_HOME=/workspace/.cache/huggingface
+# --- (Optional) Pre-fetch minimal InsightFace model so first run isn’t slow ---
+# Skips if you mount a populated persistent volume at /workspace
+# RUN python - <<'PY'\nfrom insightface.app import FaceAnalysis\napp=FaceAnalysis(name='buffalo_l', root='/workspace/ComfyUI/models/insightface'); app.prepare(ctx_id=0)\nPY
 
-# --- JupyterLab (in same venv) ---
+# --- JupyterLab (same venv) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir jupyterlab
 
 # --- Ports ---
 EXPOSE 8188 8888
 
-# --- Healthcheck (ComfyUI HTTP server) ---
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
+# --- Healthcheck (less aggressive; avoids flapping during cold start) ---
+HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
 
 # --- Startup ---
 WORKDIR /workspace
 COPY start.sh /workspace/start.sh
 RUN chmod +x /workspace/start.sh
-
-# Hint: add a non-root user if you mount host volumes (uncomment below)
-# RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /workspace
-# USER appuser
 
 ENTRYPOINT ["/workspace/start.sh"]
