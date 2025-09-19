@@ -1,6 +1,9 @@
 # CUDA 12.1 + cuDNN8 on Ubuntu 22.04
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
+# Use bash for RUN so `source` works if needed
+SHELL ["/bin/bash", "-lc"]
+
 # --- Base env ---
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DEFAULT_TIMEOUT=120 \
@@ -16,7 +19,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update -y && apt-get install -y --no-install-recommends \
       python3.10 python3.10-venv python3.10-distutils python3.10-dev \
       git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
-      cmake ninja-build cython3 \
+      cmake ninja-build cython3 ca-certificates \
  && git lfs install \
  && rm -rf /var/lib/apt/lists/*
 
@@ -24,15 +27,20 @@ RUN --mount=type=cache,target=/var/cache/apt \
 WORKDIR /workspace
 RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git
-WORKDIR /workspace/ComfyUI
 
-# --- Python 3.10 venv ---
-RUN python3.10 -m venv .venv
-ENV PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
+# --- Create and verify the venv exactly where start.sh expects it ---
+WORKDIR /workspace/ComfyUI
+RUN python3.10 -m venv .venv \
+ && . .venv/bin/activate \
+ && python -V \
+ && pip install --upgrade pip setuptools wheel
+
+# Make the venv discoverable at runtime (even if shells change PATH)
+ENV VIRTUAL_ENV=/workspace/ComfyUI/.venv
+ENV PATH="$VIRTUAL_ENV/bin:${PATH}"
 
 # --- Python deps (pre-pin numpy; cython <3 avoids ABI grief) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir "numpy==1.26.4" "cython<3"
 
 # --- PyTorch CUDA 12.1 wheels ---
@@ -54,6 +62,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # --- InsightFace ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir insightface==0.7.3
+
+# --- (Optional but recommended) Install ComfyUI’s own Python requirements ---
+# If the repo has requirements, install them into the same venv.
+# This prevents runtime surprises where modules are missing.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
 # --- Custom nodes ---
 WORKDIR /workspace/ComfyUI/custom_nodes
@@ -98,14 +112,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
 
 # --- Startup ---
-WORKDIR /workspace
-COPY start.sh /workspace/start.sh
-RUN chmod +x /workspace/start.sh
-
-# put this near the end, before ENTRYPOINT
-# ensure start.sh is next to your Dockerfile (not outside the build context)
+# Copy once; put it where PATH can find it
 COPY --chmod=755 start.sh /usr/local/bin/start.sh
-# strip CRLF if the file was edited on Windows
+# Strip CRLF if edited on Windows
 RUN sed -i 's/\r$//' /usr/local/bin/start.sh
 
+# Final sanity check: ensure venv exists so start.sh doesn’t blow up
+RUN test -f /workspace/ComfyUI/.venv/bin/activate
+
+WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/start.sh"]
