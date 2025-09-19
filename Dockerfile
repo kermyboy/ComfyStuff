@@ -6,45 +6,31 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_NO_INPUT=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_ROOT_USER_ACTION=ignore \
     PYTHONUNBUFFERED=1 \
-    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True \
-    INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface \
-    HF_HOME=/workspace/.cache/huggingface
+    # Optional: helps PyTorch memory fragmentation in long runs
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
 
-# --- System deps (runtime-only; no compilers) ---
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists \
-    apt-get update -y && apt-get install -y --no-install-recommends \
+# --- System deps ---
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
       python3.10 python3.10-venv python3.10-distutils python3.10-dev \
-      git-lfs curl wget ffmpeg libgl1 libglib2.0-0 ca-certificates \
-    && git lfs install \
-    && rm -rf /var/lib/apt/lists/*
+      git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
+      cmake ninja-build cython3 \
+ && git lfs install \
+ && rm -rf /var/lib/apt/lists/*
 
+# --- Workdir & sources ---
 WORKDIR /workspace
-
-# --- Pin refs (branch | tag | commit SHA all work) ---
-ARG COMFYUI_REF=master
-ARG REACTOR_REF=master
-ARG IPAP_REF=master
-ARG RG3_REF=master
-ARG WAN_REF=master
-
-# --- Fetch ComfyUI via archive (no .git, smaller & reliable) ---
-RUN set -eux; \
-    mkdir -p /workspace/ComfyUI; \
-    curl -L "https://codeload.github.com/comfyanonymous/ComfyUI/tar.gz/${COMFYUI_REF}" \
-      | tar -xz --strip-components=1 -C /workspace/ComfyUI
-
-# --- Python venv ---
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git
 WORKDIR /workspace/ComfyUI
+
+# --- Python 3.10 venv ---
 RUN python3.10 -m venv .venv
 ENV PATH="/workspace/ComfyUI/.venv/bin:${PATH}"
-RUN python -m pip install --upgrade pip setuptools wheel
 
-# --- Core Python pins (keep wheels only; speed + stability) ---
+# --- Python deps (pre-pin numpy; cython <3 avoids ABI grief) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir "numpy==1.26.4"
+    python -m pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir "numpy==1.26.4" "cython<3"
 
 # --- PyTorch CUDA 12.1 wheels ---
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -52,7 +38,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "torch==2.3.1+cu121" "torchvision==0.18.1+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
-# --- ONNX + CV stack ---
+# --- ONNX + CV stack (pins chosen to avoid protobuf & skimage breaks) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
       onnx==1.16.0 \
@@ -61,39 +47,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "scikit-image<0.23" \
       "pillow<10.3" \
       "protobuf<5"
-      
-# --- InsightFace deps first (prevent resolver fights) ---
+
+# --- InsightFace ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
-      "scipy==1.11.4" \
-      "easydict==1.13" \
-      "prettytable==3.10.0" \
-      "tqdm==4.66.5"
+    pip install --no-cache-dir insightface==0.7.3
 
-# Install InsightFace but force binary wheels; if none, fall back to 0.7.2.post0
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --no-deps --no-build-isolation --prefer-binary "insightface==0.7.3" \
-  || pip install --no-cache-dir --no-deps --no-build-isolation --prefer-binary "insightface==0.7.2.post0"
-
-
-# --- Custom nodes via archives (fast; cacheable; no .git) ---
+# --- Custom nodes ---
 WORKDIR /workspace/ComfyUI/custom_nodes
-RUN set -eux; \
-    mkdir -p ComfyUI-ReActor && \
-    curl -L "https://codeload.github.com/Gourieff/ComfyUI-ReActor/tar.gz/${REACTOR_REF}" \
-      | tar -xz --strip-components=1 -C ComfyUI-ReActor && \
-    mkdir -p ComfyUI_IPAdapter_plus && \
-    curl -L "https://codeload.github.com/cubiq/ComfyUI_IPAdapter_plus/tar.gz/${IPAP_REF}" \
-      | tar -xz --strip-components=1 -C ComfyUI_IPAdapter_plus && \
-    mkdir -p rgthree-comfy && \
-    curl -L "https://codeload.github.com/rgthree/rgthree-comfy/tar.gz/${RG3_REF}" \
-      | tar -xz --strip-components=1 -C rgthree-comfy && \
-    mkdir -p ComfyUI--Wan22FirstLastFrameToVideoLatent && \
-    curl -L "https://codeload.github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent/tar.gz/${WAN_REF}" \
-      | tar -xz --strip-components=1 -C ComfyUI--Wan22FirstLastFrameToVideoLatent
+RUN git clone https://github.com/Gourieff/ComfyUI-ReActor.git && \
+    git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
+    git clone https://github.com/rgthree/rgthree-comfy.git && \
+    git clone https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git
 
-# ---- Disable ReActor SFW filter (non-fatal) ----
-RUN set -eux; f="/workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
+# ---- Disable ReActor SFW filter (brittle; prefer a toggle if upstream adds one) ----
+RUN set -eux; \
+    f="/workspace/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
     if [ -f "$f" ]; then \
       sed -i 's/return is_nsfw/return False/' "$f" || true; \
       sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
@@ -108,22 +76,30 @@ RUN mkdir -p /workspace/ComfyUI/models/insightface/antelopev2 \
              /workspace/ComfyUI/models/clip \
              /workspace/ComfyUI/models/wan \
              /workspace/ComfyUI/input \
-             /workspace/ComfyUI/output \
-             /workspace/.cache/huggingface
+             /workspace/ComfyUI/output
 
-# --- JupyterLab (optional) ---
+# --- Caches & runtime env ---
+ENV INSIGHTFACE_HOME=/workspace/ComfyUI/models/insightface \
+    HF_HOME=/workspace/.cache/huggingface
+
+# --- JupyterLab (in same venv) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir jupyterlab
 
 # --- Ports ---
 EXPOSE 8188 8888
 
-# --- Healthcheck ---
-HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=5 \
+# --- Healthcheck (ComfyUI HTTP server) ---
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
 
 # --- Startup ---
 WORKDIR /workspace
 COPY start.sh /workspace/start.sh
 RUN chmod +x /workspace/start.sh
+
+# Hint: add a non-root user if you mount host volumes (uncomment below)
+# RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /workspace
+# USER appuser
+
 ENTRYPOINT ["/workspace/start.sh"]
