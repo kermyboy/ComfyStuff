@@ -23,8 +23,6 @@ RUN --mount=type=cache,target=/var/cache/apt \
  && git lfs install \
  && rm -rf /var/lib/apt/lists/*
 
-
-
 # --- Code lives OUTSIDE the /workspace mount to avoid being clobbered ---
 WORKDIR /opt
 RUN --mount=type=cache,target=/root/.cache/git \
@@ -57,6 +55,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --no-cache-dir insightface==0.7.3
 
+# --- Extra deps needed by your custom nodes ---
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3.10 -m pip install --no-cache-dir \
+      segment-anything piexif requests safetensors einops
+
 # --- (Optional) Repo requirements if present ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -f requirements.txt ]; then python3.10 -m pip install --no-cache-dir -r requirements.txt; fi
@@ -71,7 +74,6 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
-    
 
 # ---- Disable ReActor SFW filter (intentional) ----
 RUN set -eux; \
@@ -82,19 +84,12 @@ RUN set -eux; \
     fi
 
 # --- Persistent model + IO dirs ON THE VOLUME under /workspace ---
-# Keep all large assets here so they survive across pods
-RUN mkdir -p /workspace/models/insightface/antelopev2 \
-             /workspace/models/insightface/buffalo_l \
-             /workspace/models/checkpoints \
-             /workspace/models/vae \
-             /workspace/models/clip \
-             /workspace/models/wan \
-             /workspace/input \
-             /workspace/output \
-    # ReActor expects a models dir inside its tree; symlink it to the volume
+RUN mkdir -p /workspace/models/{insightface/antelopev2,insightface/buffalo_l,checkpoints,vae,clip,wan,loras,controlnet,upscale_models,embeddings} \
+           /workspace/{input,output} \
  && mkdir -p /workspace/reactor_models \
  && ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models
- 
+
+# --- Point ComfyUI paths at the persistent volume (build-time) ---
 RUN rm -rf /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output && \
     ln -s /workspace/models /opt/ComfyUI/models && \
     ln -s /workspace/input  /opt/ComfyUI/input  && \
@@ -112,8 +107,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
 
 # --- Startup ---
-# Note: start.sh originally cd'd into /workspace/ComfyUI.
-# Patch it to use /opt/ComfyUI so code isn't hidden by the /workspace mount.
 WORKDIR /workspace
 COPY --chmod=755 start.sh /usr/local/bin/start.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
