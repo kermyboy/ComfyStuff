@@ -75,13 +75,6 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
 
-# Persist custom_nodes on /workspace
-RUN mkdir -p /workspace/custom_nodes && \
-    rsync -a /opt/ComfyUI/custom_nodes/ /workspace/custom_nodes/ || true && \
-    rm -rf /opt/ComfyUI/custom_nodes && \
-    ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes
-
-
 # ---- Disable ReActor SFW filter (intentional) ----
 RUN set -eux; \
     f="/opt/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
@@ -90,19 +83,31 @@ RUN set -eux; \
       sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
     fi
 
-# --- Persistent dirs: models, io, user (on volume) ---
-RUN mkdir -p /workspace/models/{checkpoints,vae,clip,loras,controlnet,upscale_models,embeddings,wan,insightface/antelopev2,insightface/buffalo_l} \
-           /workspace/{input,output} \
-           /workspace/user/default/workflows && \
-    # link ReActor models to persistent store
-    mkdir -p /workspace/reactor_models && \
-    ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models && \
-    # link ComfyUI paths to persistent volume
-    rm -rf /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output /opt/ComfyUI/user && \
-    ln -s /workspace/models /opt/ComfyUI/models && \
-    ln -s /workspace/input  /opt/ComfyUI/input  && \
-    ln -s /workspace/output /opt/ComfyUI/output && \
-    ln -s /workspace/user   /opt/ComfyUI/user
+# --- Persist custom_nodes + create persistent dirs + link everything cleanly ---
+RUN set -eux; \
+  # 1) Move custom_nodes to the persistent volume and link it back
+  mkdir -p /workspace/custom_nodes; \
+  rsync -a /opt/ComfyUI/custom_nodes/ /workspace/custom_nodes/ || true; \
+  rm -rf /opt/ComfyUI/custom_nodes; \
+  ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes; \
+  \
+  # 2) Create all persistent dirs (models/io/user)
+  mkdir -p /workspace/models/{checkpoints,vae,clip,loras,controlnet,upscale_models,embeddings,wan,insightface/antelopev2,insightface/buffalo_l}; \
+  mkdir -p /workspace/{input,output}; \
+  mkdir -p /workspace/user/default/workflows; \
+  \
+  # 3) ReActor expects a models dir; point it at the persistent store (under the now-persistent custom_nodes)
+  mkdir -p /workspace/reactor_models; \
+  if [ -d /workspace/custom_nodes/ComfyUI-ReActor ]; then \
+    ln -sfn /workspace/reactor_models /workspace/custom_nodes/ComfyUI-ReActor/models; \
+  fi; \
+  \
+  # 4) Point ComfyUI’s paths at the persistent volume
+  rm -rf /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output /opt/ComfyUI/user || true; \
+  ln -s /workspace/models /opt/ComfyUI/models; \
+  ln -s /workspace/input  /opt/ComfyUI/input; \
+  ln -s /workspace/output /opt/ComfyUI/output; \
+  ln -s /workspace/user   /opt/ComfyUI/user
 
 # --- JupyterLab (optional) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
