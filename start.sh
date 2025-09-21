@@ -38,7 +38,16 @@ if [[ ! -L /opt/ComfyUI/user ]]; then
   rm -rf /opt/ComfyUI/user || true
   ln -s /workspace/user /opt/ComfyUI/user
 fi
-
+# Ensure custom_nodes persists and link exists
+mkdir -p /workspace/custom_nodes
+if [[ ! -L /opt/ComfyUI/custom_nodes ]]; then
+  # seed from image if a real dir somehow still exists
+  if [[ -d /opt/ComfyUI/custom_nodes ]]; then
+    rsync -a /opt/ComfyUI/custom_nodes/ /workspace/custom_nodes/ || true
+    rm -rf /opt/ComfyUI/custom_nodes
+  fi
+  ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes
+fi
 # --- Start ComfyUI ---
 cd /opt/ComfyUI
 exec python3.10 main.py --listen 0.0.0.0 --port "${COMFY_PORT:-8188}"
