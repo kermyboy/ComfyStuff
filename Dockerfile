@@ -19,21 +19,20 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update -y && apt-get install -y --no-install-recommends \
       python3.10 python3.10-dev python3-pip \
       git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
-      cmake ninja-build cython3 ca-certificates \
+      cmake ninja-build cython3 ca-certificates rsync \
  && git lfs install \
  && rm -rf /var/lib/apt/lists/*
 
-# --- Code lives OUTSIDE the /workspace mount to avoid being clobbered ---
+# --- Code under /opt (kept in image layers) ---
 WORKDIR /opt
 RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git /opt/ComfyUI
 WORKDIR /opt/ComfyUI
 
-# --- Python deps into system Python (RunPod-friendly, no venv) ---
+# --- Python deps (system Python) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --upgrade pip setuptools wheel && \
-    python3.10 -m pip install --no-cache-dir \
-      "numpy==1.26.4" "cython<3"
+    python3.10 -m pip install --no-cache-dir "numpy==1.26.4" "cython<3"
 
 # --- PyTorch CUDA 12.1 wheels ---
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -55,7 +54,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --no-cache-dir insightface==0.7.3
 
-# --- Extra deps needed by your custom nodes ---
+# --- Extra deps needed by custom nodes ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --no-cache-dir \
       segment-anything piexif requests safetensors einops
@@ -64,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -f requirements.txt ]; then python3.10 -m pip install --no-cache-dir -r requirements.txt; fi
 
-# --- Custom nodes (baked into image under /opt) ---
+# --- Custom nodes (seeded into image) ---
 WORKDIR /opt/ComfyUI/custom_nodes
 RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/Gourieff/ComfyUI-ReActor.git && \
@@ -75,49 +74,16 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
 
-
-# after you clone the nodes under /opt/ComfyUI/custom_nodes:
+# --- Create a seed copy we can expand into the volume on first run ---
 RUN cp -a /opt/ComfyUI/custom_nodes /opt/_seed_custom_nodes
 
-# move/link custom_nodes to the volume (as you do)
-RUN mkdir -p /workspace/custom_nodes && \
-    rm -rf /opt/ComfyUI/custom_nodes && \
-    ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes
-
-
-# ---- Disable ReActor SFW filter (intentional) ----
+# ---- Disable ReActor SFW filter in the seed (intentional) ----
 RUN set -eux; \
-    f="/opt/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
+    f="/opt/_seed_custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
     if [ -f "$f" ]; then \
       sed -i 's/return is_nsfw/return False/' "$f" || true; \
       sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
     fi
-
-# --- Persist custom_nodes + create persistent dirs + link everything cleanly ---
-RUN set -eux; \
-  # 1) Move custom_nodes to the persistent volume and link it back
-  mkdir -p /workspace/custom_nodes; \
-  rsync -a /opt/ComfyUI/custom_nodes/ /workspace/custom_nodes/ || true; \
-  rm -rf /opt/ComfyUI/custom_nodes; \
-  ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes; \
-  \
-  # 2) Create all persistent dirs (models/io/user)
-  mkdir -p /workspace/models/{checkpoints,vae,clip,loras,controlnet,upscale_models,embeddings,wan,insightface/antelopev2,insightface/buffalo_l}; \
-  mkdir -p /workspace/{input,output}; \
-  mkdir -p /workspace/user/default/workflows; \
-  \
-  # 3) ReActor expects a models dir; point it at the persistent store (under the now-persistent custom_nodes)
-  mkdir -p /workspace/reactor_models; \
-  if [ -d /workspace/custom_nodes/ComfyUI-ReActor ]; then \
-    ln -sfn /workspace/reactor_models /workspace/custom_nodes/ComfyUI-ReActor/models; \
-  fi; \
-  \
-  # 4) Point ComfyUI’s paths at the persistent volume
-  rm -rf /opt/ComfyUI/models /opt/ComfyUI/input /opt/ComfyUI/output /opt/ComfyUI/user || true; \
-  ln -s /workspace/models /opt/ComfyUI/models; \
-  ln -s /workspace/input  /opt/ComfyUI/input; \
-  ln -s /workspace/output /opt/ComfyUI/output; \
-  ln -s /workspace/user   /opt/ComfyUI/user
 
 # --- JupyterLab (optional) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -125,6 +91,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # --- Ports ---
 EXPOSE 8188 8888
+
+# --- Declare persistent workspace ---
+VOLUME ["/workspace"]
 
 # --- Healthcheck (ComfyUI HTTP server) ---
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
