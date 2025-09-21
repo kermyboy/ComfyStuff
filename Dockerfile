@@ -75,6 +75,13 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
 
+# Persist custom_nodes on /workspace
+RUN mkdir -p /workspace/custom_nodes && \
+    rsync -a /opt/ComfyUI/custom_nodes/ /workspace/custom_nodes/ || true && \
+    rm -rf /opt/ComfyUI/custom_nodes && \
+    ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes
+
+
 # ---- Disable ReActor SFW filter (intentional) ----
 RUN set -eux; \
     f="/opt/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
