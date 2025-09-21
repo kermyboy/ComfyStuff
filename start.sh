@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# --- Optional JupyterLab (no auth, opt-in) ---
+# --- Optional JupyterLab (no auth, proxy-friendly) ---
 if [[ "${ENABLE_JUPYTER:-0}" == "1" ]]; then
   : "${JUPYTER_IP:=0.0.0.0}"
   : "${JUPYTER_PORT:=8888}"
@@ -20,8 +20,12 @@ if [[ "${ENABLE_JUPYTER:-0}" == "1" ]]; then
     >/var/log/jupyter.log 2>&1 &
 fi
 
-# --- Ensure symlinks point to persistent volume every start ---
-mkdir -p /workspace/{input,output,models}
+# --- Ensure persistent dirs exist on the mounted volume ---
+mkdir -p /workspace/models/{checkpoints,vae,clip,loras,controlnet,upscale_models,embeddings,wan,insightface/antelopev2,insightface/buffalo_l}
+mkdir -p /workspace/{input,output}
+mkdir -p /workspace/user/default/workflows
+
+# --- Re-point ComfyUI paths to persistent volume (idempotent) ---
 for d in models input output; do
   if [[ ! -L "/opt/ComfyUI/${d}" ]]; then
     rm -rf "/opt/ComfyUI/${d}" || true
@@ -29,10 +33,11 @@ for d in models input output; do
   fi
 done
 
-# --- Ensure default model subfolders exist (moved from Dockerfile) ---
-mkdir -p /workspace/models/{insightface/antelopev2,insightface/buffalo_l,checkpoints,vae,clip,wan,loras,controlnet,upscale_models,embeddings}
-mkdir -p /workspace/reactor_models
-ln -sfn /workspace/reactor_models /opt/ComfyUI/custom_nodes/ComfyUI-ReActor/models
+# user dir (where workflows/config live)
+if [[ ! -L /opt/ComfyUI/user ]]; then
+  rm -rf /opt/ComfyUI/user || true
+  ln -s /workspace/user /opt/ComfyUI/user
+fi
 
 # --- Start ComfyUI ---
 cd /opt/ComfyUI
