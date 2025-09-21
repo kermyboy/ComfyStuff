@@ -75,6 +75,16 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
 
+
+# after you clone the nodes under /opt/ComfyUI/custom_nodes:
+RUN cp -a /opt/ComfyUI/custom_nodes /opt/_seed_custom_nodes
+
+# move/link custom_nodes to the volume (as you do)
+RUN mkdir -p /workspace/custom_nodes && \
+    rm -rf /opt/ComfyUI/custom_nodes && \
+    ln -s /workspace/custom_nodes /opt/ComfyUI/custom_nodes
+
+
 # ---- Disable ReActor SFW filter (intentional) ----
 RUN set -eux; \
     f="/opt/ComfyUI/custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
