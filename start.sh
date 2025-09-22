@@ -1,29 +1,42 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ---- Defaults / knobs --------------------------------------------------------
 : "${COMFY_PORT:=8188}"
 : "${ENABLE_JUPYTER:=0}"
 : "${JUPYTER_IP:=0.0.0.0}"
 : "${JUPYTER_PORT:=8888}"
-: "${COMFY_ARGS:=}"             # e.g. "--gpu-only --auto-launch"
-umask 0002                      # friendlier perms when volumes are reused
+: "${COMFY_ARGS:=}"
+umask 0002
 
-# Persist common caches in the volume (avoids re-downloads on new pods)
 export XDG_CACHE_HOME=/workspace/.cache
 export HF_HOME=${HF_HOME:-/workspace/.cache/huggingface}
 export INSIGHTFACE_HOME=${INSIGHTFACE_HOME:-/workspace/models/insightface}
 
-# ---- Helpers -----------------------------------------------------------------
+# ---- ensure python/pip aliases for Manager -----------------------------------
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+if ! command -v python >/dev/null 2>&1; then
+  [ -x /usr/bin/python3.10 ] && ln -sf /usr/bin/python3.10 /usr/bin/python
+fi
+if ! command -v pip >/dev/null 2>&1 && [ -x /usr/bin/pip3 ]; then
+  ln -sf /usr/bin/pip3 /usr/bin/pip
+fi
+python - <<'PY' || { echo "[FATAL] Missing pip module in python runtime"; exit 13; }
+import sys
+import pip
+try:
+    import git, toml
+except Exception as e:
+    print(f"[WARN] Optional Manager deps missing: {e}", file=sys.stderr)
+print("python OK:", sys.version)
+PY
+
 link_into_opt() {
-  # link_into_opt <name>  (links /workspace/<name> -> /opt/ComfyUI/<name>)
   local name="$1"
   mkdir -p "/workspace/${name}"
   rm -rf "/opt/ComfyUI/${name}" 2>/dev/null || true
   ln -sfn "/workspace/${name}" "/opt/ComfyUI/${name}"
 }
 
-# ---- Optional JupyterLab (no auth; proxy-friendly) ---------------------------
 if [[ "${ENABLE_JUPYTER}" == "1" ]]; then
   echo "Starting JupyterLab on ${JUPYTER_IP}:${JUPYTER_PORT} (no auth)..."
   nohup jupyter lab \
@@ -40,28 +53,30 @@ if [[ "${ENABLE_JUPYTER}" == "1" ]]; then
     >/var/log/jupyter.log 2>&1 &
 fi
 
-# ---- Ensure persistent dirs ---------------------------------------------------
 mkdir -p /workspace/{input,output,user/default/workflows,custom_nodes,reactor_models}
 mkdir -p /workspace/models/{checkpoints,vae,clip,loras,controlnet,upscale_models,embeddings,wan,insightface/antelopev2,insightface/buffalo_l}
 mkdir -p /workspace/.cache
 
-# Seed custom_nodes only on first run
 if [[ -d /opt/_seed_custom_nodes ]] && [[ -z "$(ls -A /workspace/custom_nodes 2>/dev/null)" ]]; then
   echo "[init] Seeding custom_nodes into /workspace/custom_nodes"
   rsync -a /opt/_seed_custom_nodes/ /workspace/custom_nodes/
 fi
 
-# ReActor expects a models dir; keep it persistent
 if [[ -d /workspace/custom_nodes/ComfyUI-ReActor ]]; then
   ln -sfn /workspace/reactor_models /workspace/custom_nodes/ComfyUI-ReActor/models
 fi
 
-# ---- Link ComfyUI paths back into /opt (idempotent) --------------------------
 for d in models input output user custom_nodes; do
   link_into_opt "${d}"
 done
 
-# ---- Start ComfyUI -----------------------------------------------------------
+# Optional: run Manager prestartup non-fatal (better logging)
+if [ -f /opt/ComfyUI/custom_nodes/ComfyUI-Manager/prestartup_script.py ]; then
+  echo "[info] Running ComfyUI-Manager prestartup..."
+  python /opt/ComfyUI/custom_nodes/ComfyUI-Manager/prestartup_script.py || \
+    echo "[warn] Manager prestartup failed (continuing)"
+fi
+
 cd /opt/ComfyUI
 echo "Starting ComfyUI on 0.0.0.0:${COMFY_PORT} ${COMFY_ARGS}"
 exec python3.10 main.py --listen 0.0.0.0 --port "${COMFY_PORT}" ${COMFY_ARGS}
