@@ -34,9 +34,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --upgrade pip setuptools wheel && \
     python3.10 -m pip install --no-cache-dir "numpy==1.26.4" "cython<3"
 
-# --- Ensure Manager can use `python -m pip` and has GitPython ---
+# --- Ensure Manager can use `python -m pip` and has GitPython + toml ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir "gitpython>=3.1.43" && \
+    python -m pip install --no-cache-dir "gitpython>=3.1.43" "toml" && \
     ln -sf /usr/bin/pip3 /usr/bin/pip || true
 
 # --- PyTorch CUDA 12.1 wheels ---
