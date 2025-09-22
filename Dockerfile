@@ -17,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && apt-get install -y --no-install-recommends \
-      python3.10 python3.10-dev python3-pip \
+      python3.10 python3.10-dev python3-pip python3.10-venv python-is-python3 \
       git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
       cmake ninja-build cython3 ca-certificates rsync \
  && git lfs install \
@@ -33,6 +33,11 @@ WORKDIR /opt/ComfyUI
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --upgrade pip setuptools wheel && \
     python3.10 -m pip install --no-cache-dir "numpy==1.26.4" "cython<3"
+
+# --- Ensure Manager can use `python -m pip` and has GitPython ---
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --no-cache-dir "gitpython>=3.1.43" && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip || true
 
 # --- PyTorch CUDA 12.1 wheels ---
 RUN --mount=type=cache,target=/root/.cache/pip \
