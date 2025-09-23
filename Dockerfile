@@ -49,7 +49,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       scikit-learn \
       numba \
     && ln -sf /usr/bin/pip3 /usr/bin/pip || true
-
+# --- Make package managers visible to ComfyUI-Manager ---
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3.10 -m pip install --no-cache-dir uv && \
+    ln -sf /usr/bin/pip3 /usr/local/bin/pip || true && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip || true && \
+    ln -sf /usr/bin/python3.10 /usr/local/bin/python || true
 # --- PyTorch CUDA 12.1 wheels ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.10 -m pip install --no-cache-dir \
