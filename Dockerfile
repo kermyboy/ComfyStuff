@@ -11,78 +11,63 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True \
     HF_HOME=/workspace/.cache/huggingface \
-    INSIGHTFACE_HOME=/workspace/models/insightface
+    XDG_CACHE_HOME=/workspace/.cache
 
 # --- System deps ---
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && apt-get install -y --no-install-recommends \
-      python3.10 python3.10-dev python3-pip python3.10-venv python-is-python3 \
-      git git-lfs curl wget ffmpeg libgl1 libglib2.0-0 build-essential \
-      cmake ninja-build cython3 ca-certificates rsync \
+      software-properties-common ca-certificates git git-lfs curl wget \
+      ffmpeg libgl1 libglib2.0-0 build-essential cmake ninja-build \
+      rsync pkg-config \
+      python3.11 python3.11-dev python3.11-venv python3-pip \
  && git lfs install \
+ && ln -sf /usr/bin/python3.11 /usr/bin/python \
+ && ln -sf /usr/bin/pip3 /usr/bin/pip \
  && rm -rf /var/lib/apt/lists/*
 
-# --- Code under /opt (kept in image layers) ---
+# --- ComfyUI code ---
 WORKDIR /opt
 RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git /opt/ComfyUI
 WORKDIR /opt/ComfyUI
 
-# --- Python deps (system Python) ---
+# --- Python bootstrap ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --upgrade pip setuptools wheel && \
-    python3.10 -m pip install --no-cache-dir "numpy==1.26.4" "cython<3"
+    python -m pip install --upgrade pip setuptools wheel "cython<3"
 
-# --- Ensure Manager can use `python -m pip` and has all Manager deps ---
+# --- PyTorch CUDA 12.1 (needs >=2.4 for RMSNorm) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir \
-      gitpython>=3.1.43 \
-      toml \
-      rich \
-      pygithub \
-      matrix-client==0.4.0 \
-      transformers \
-      "huggingface-hub>0.20" \
-      typer \
-      typing-extensions \
-      scikit-learn \
-      numba \
-    && ln -sf /usr/bin/pip3 /usr/bin/pip || true
-# --- Make package managers visible to ComfyUI-Manager ---
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir uv && \
-    ln -sf /usr/bin/pip3 /usr/local/bin/pip || true && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip || true && \
-    ln -sf /usr/bin/python3.10 /usr/local/bin/python || true
-# --- PyTorch CUDA 12.1 wheels ---
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir \
-      "torch==2.3.1+cu121" "torchvision==0.18.1+cu121" \
+    python -m pip install --no-cache-dir \
+      "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
-# --- ONNX + CV stack ---
+# --- Core scientific/video deps (pin NumPy < 2; headless OpenCV) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir \
+    python -m pip install --no-cache-dir \
+      "numpy<2" \
+      opencv-python-headless==4.9.0.80 \
       onnx==1.16.0 \
       onnxruntime-gpu==1.18.1 \
-      opencv-python-headless==4.9.0.80 \
       "scikit-image<0.23" \
       "pillow<10.3" \
-      "protobuf<5"
+      "protobuf<5" \
+      imageio imageio-ffmpeg
 
-# --- InsightFace ---
+# --- Diffusers stack for Wan ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir insightface==0.7.3
+    python -m pip install --no-cache-dir \
+      "diffusers>=0.33.0" \
+      "accelerate>=0.30" \
+      "transformers>=4.44" \
+      "huggingface-hub>=0.20" \
+      "peft>=0.17.0" \
+      sentencepiece einops safetensors requests
 
-# --- Extra deps needed by custom nodes ---
+# --- (Optional) JupyterLab ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir \
-      segment-anything piexif requests safetensors einops
+    python -m pip install --no-cache-dir jupyterlab uv
 
-# --- (Optional) Repo requirements if present ---
-RUN --mount=type=cache,target=/root/.cache/pip \
-    if [ -f requirements.txt ]; then python3.10 -m pip install --no-cache-dir -r requirements.txt; fi
 
 # --- Custom nodes (seeded into image) ---
 WORKDIR /opt/ComfyUI/custom_nodes
@@ -96,28 +81,18 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git && \
     git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir -r /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/requirements.txt
-    
-# --- Create a seed copy we can expand into the volume on first run ---
-RUN cp -a /opt/ComfyUI/custom_nodes /opt/_seed_custom_nodes
 
-# ---- Disable ReActor SFW filter in the seed (intentional) ----
-RUN set -eux; \
-    f="/opt/_seed_custom_nodes/ComfyUI-ReActor/scripts/reactor_sfw.py"; \
-    if [ -f "$f" ]; then \
-      sed -i 's/return is_nsfw/return False/' "$f" || true; \
-      sed -i 's/if nsfw_image.*:/if False:/' "$f" || true; \
+# --- Install WanVideoWrapper requirements explicitly (future-proof) ---
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -f /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/requirements.txt ]; then \
+      python -m pip install --no-cache-dir -r /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/requirements.txt; \
     fi
 
-# --- JupyterLab (optional) ---
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.10 -m pip install --no-cache-dir jupyterlab
+# --- Create a seed copy of custom_nodes to populate volume on first run ---
+RUN cp -a /opt/ComfyUI/custom_nodes /opt/_seed_custom_nodes
 
-# --- Ports ---
+# --- Ports & workspace ---
 EXPOSE 8188 8888
-
-# --- Declare persistent workspace ---
 VOLUME ["/workspace"]
 
 # --- Healthcheck (ComfyUI HTTP server) ---
