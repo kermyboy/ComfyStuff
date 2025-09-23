@@ -93,7 +93,8 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git && \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
-    git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
+    git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git && \
+    git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
 
 # --- Create a seed copy we can expand into the volume on first run ---
 RUN cp -a /opt/ComfyUI/custom_nodes /opt/_seed_custom_nodes
