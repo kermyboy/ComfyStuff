@@ -72,7 +72,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # --- Custom nodes (seeded into image) ---
 WORKDIR /opt/ComfyUI/custom_nodes
 RUN --mount=type=cache,target=/root/.cache/git \
-    git clone --depth=1 https://github.com/Gourieff/ComfyUI-ReActor.git && \
     git clone --depth=1 https://github.com/cubiq/ComfyUI_IPAdapter_plus.git && \
     git clone --depth=1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth=1 https://github.com/stduhpf/ComfyUI--Wan22FirstLastFrameToVideoLatent.git && \
