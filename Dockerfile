@@ -96,6 +96,9 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git && \
     git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
 
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3.10 -m pip install --no-cache-dir -r /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/requirements.txt
+    
 # --- Create a seed copy we can expand into the volume on first run ---
 RUN cp -a /opt/ComfyUI/custom_nodes /opt/_seed_custom_nodes
 
