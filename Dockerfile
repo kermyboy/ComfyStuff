@@ -20,11 +20,11 @@ RUN --mount=type=cache,target=/var/cache/apt \
       software-properties-common ca-certificates git git-lfs curl wget \
       ffmpeg libgl1 libglib2.0-0 build-essential cmake ninja-build \
       rsync pkg-config \
-      python3.11 python3.11-dev python3.11-venv python3-pip \
- && git lfs install \
- && ln -sf /usr/bin/python3.11 /usr/bin/python \
- && ln -sf /usr/bin/pip3 /usr/bin/pip \
- && rm -rf /var/lib/apt/lists/*
+      python3.11 python3.11-dev python3.11-venv python3-pip python-is-python3 \
+    && git lfs install \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/bin/pip \
+    && rm -rf /var/lib/apt/lists/*
 
 # --- ComfyUI code ---
 WORKDIR /opt
@@ -119,8 +119,9 @@ ENV UV_LINK_MODE=copy
 
 # --- Startup ---
 WORKDIR /workspace
-COPY --chmod=755 start.sh /usr/local/bin/start.sh
-RUN sed -i 's/\r$//' /usr/local/bin/start.sh \
- && sed -i 's#/workspace/ComfyUI#/opt/ComfyUI#' /usr/local/bin/start.sh
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod 755 /usr/local/bin/start.sh \
+    && sed -i 's/\r$//' /usr/local/bin/start.sh \
+    && sed -i 's#/workspace/ComfyUI#/opt/ComfyUI#' /usr/local/bin/start.sh
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]
