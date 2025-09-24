@@ -49,13 +49,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       --index-url https://download.pytorch.org/whl/cu121
 
 # --- Global guard-rails for resolution (tiny constraints, not a lockfile) ---
-RUN bash -lc 'cat > /etc/pip-constraints.txt << "EOF"
+RUN bash -lc 'cat <<EOF > /etc/pip-constraints.txt
 numpy<2
 av>=12
 torch==2.4.0+cu121
 torchvision==0.19.0+cu121
 torchaudio==2.4.0+cu121
 EOF'
+
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # --- Install ComfyUI dependencies from its requirements (requirements-first) ---
