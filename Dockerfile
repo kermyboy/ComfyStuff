@@ -36,28 +36,22 @@ WORKDIR /opt/ComfyUI
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip setuptools wheel "cython<3"
 
-# --- PyTorch CUDA 12.1 (needs >=2.4 for RMSNorm) ---
+# --- PyTorch 2.8 (CUDA 12.1) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir \
-      "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" \
-      --index-url https://download.pytorch.org/whl/cu121
-
-# Optional: torchaudio in the same index
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir \
-      "torchaudio==2.4.0+cu121" \
-      --index-url https://download.pytorch.org/whl/cu121
+    python -m pip install --no-cache-dir --upgrade \
+      --index-url https://download.pytorch.org/whl/cu121 \
+      "torch==2.8.*+cu121" \
+      "torchvision==0.23.*+cu121" \
+      "torchaudio==2.8.*+cu121"
 
 # --- Global guard-rails for resolution (tiny constraints, not a lockfile) ---
 RUN printf '%s\n' \
   'numpy<2' \
   'av>=12' \
-  'torch==2.4.0+cu121' \
-  'torchvision==0.19.0+cu121' \
-  'torchaudio==2.4.0+cu121' \
+  'torch==2.8.*+cu121' \
+  'torchvision==0.23.*+cu121' \
+  'torchaudio==2.8.*+cu121' \
   > /etc/pip-constraints.txt
-ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
-
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # --- Install ComfyUI dependencies from its requirements (requirements-first) ---
@@ -74,6 +68,7 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git && \
     git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
+
 # --- Extras for custom nodes that failed in logs ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir \
@@ -84,9 +79,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "onnxruntime-gpu==1.19.*" \
       "insightface>=0.7,<0.8" \
       "imageio-ffmpeg>=0.4.9" \
-      sageattention \
-      triton
-      
+      sageattention
+
+# Note: Triton is bundled/managed by the torch wheel; installing a separate 'triton' can conflict with PyTorch.
+# If you truly need a standalone triton (rare), add it back with a matching version pin.
+
 # --- ComfyUI-Manager dependencies (if it ships requirements) ---
 RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
   REQ=/opt/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt; \
