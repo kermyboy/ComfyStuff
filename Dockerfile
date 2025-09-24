@@ -120,7 +120,7 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
 
 # --- ComfyUI-Manager dependencies ---
-RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
+RUN --mount=type=cache,target=/root/.cache/pip bash -lc \
   REQ=/opt/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt; \
   if [ -f "$REQ" ]; then \
     python -m pip install --no-cache-dir -r "$REQ"; \
@@ -128,7 +128,7 @@ RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
     python -m pip install --no-cache-dir \
       gitpython>=3.1.43 toml rich \
       pygithub typer typing-extensions matrix-client==0.4.0; \
-  fi'
+  fi
 
 # --- Make package managers visible to Manager ---
 RUN --mount=type=cache,target=/root/.cache/pip \
