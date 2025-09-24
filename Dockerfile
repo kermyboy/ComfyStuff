@@ -40,19 +40,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir --upgrade \
       --index-url https://download.pytorch.org/whl/cu121 \
-      "torch==2.8.*+cu121" \
-      "torchvision==0.23.*+cu121" \
-      "torchaudio==2.8.*+cu121"
+      torch==2.8.0 \
+      torchvision==0.23.0 \
+      torchaudio==2.8.0
 
 # --- Global guard-rails for resolution (tiny constraints, not a lockfile) ---
 RUN printf '%s\n' \
   'numpy<2' \
   'av>=12' \
-  'torch==2.8.*+cu121' \
-  'torchvision==0.23.*+cu121' \
-  'torchaudio==2.8.*+cu121' \
+  'torch==2.8.0' \
+  'torchvision==0.23.0' \
+  'torchaudio==2.8.0' \
   > /etc/pip-constraints.txt
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
+
 
 # --- Install ComfyUI dependencies from its requirements (requirements-first) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
