@@ -74,7 +74,16 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git && \
     git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
-
+# --- Extras for custom nodes that failed in logs ---
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --no-cache-dir \
+      "matplotlib==3.8.*" \        # controlnet_aux post-process & dwpose
+      "scikit-image==0.24.*" \     # Impact Pack
+      "numba==0.59.*" \            # WAS Node Suite
+      "onnx==1.16.*" \             # FantasyPortrait nodes, general ONNX models
+      "onnxruntime-gpu==1.19.*" \  # GPU backend for InsightFace etc. (falls back to CPU if no CUDA EP)
+      "insightface>=0.7,<0.8" \    # ReActor
+      "imageio-ffmpeg>=0.4.9"      # silences VideoHelperSuite warning
 # --- ComfyUI-Manager dependencies (if it ships requirements) ---
 RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
   REQ=/opt/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt; \
