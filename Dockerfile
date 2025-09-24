@@ -36,26 +36,16 @@ WORKDIR /opt/ComfyUI
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip setuptools wheel "cython<3"
 
-# --- PyTorch 2.8 (CUDA 12.1) ---
+# --- PyTorch (latest stable for CUDA 12.1) ---
+# If you ever need very new flags/APIs, switch to the NIGHTLY cu121 channel:
+#   add: --pre
+#   swap index: https://download.pytorch.org/whl/nightly/cu121
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir --upgrade \
       --index-url https://download.pytorch.org/whl/cu121 \
-      torch==2.8.0 \
-      torchvision==0.23.0 \
-      torchaudio==2.8.0
+      torch torchvision torchaudio
 
-# --- Global guard-rails for resolution (tiny constraints, not a lockfile) ---
-RUN printf '%s\n' \
-  'numpy<2' \
-  'av>=12' \
-  'torch==2.8.0' \
-  'torchvision==0.23.0' \
-  'torchaudio==2.8.0' \
-  > /etc/pip-constraints.txt
-ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
-
-
-# --- Install ComfyUI dependencies from its requirements (requirements-first) ---
+# --- Install ComfyUI dependencies ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir -r /opt/ComfyUI/requirements.txt
 
@@ -70,20 +60,10 @@ RUN --mount=type=cache,target=/root/.cache/git \
     git clone --depth=1 https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git && \
     git clone --depth=1 https://github.com/kijai/ComfyUI-WanVideoWrapper.git
 
-# --- Extras for custom nodes that failed in logs ---
+# --- Cover common custom-node gaps (from your logs) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir \
-      "matplotlib==3.8.*" \
-      "scikit-image==0.24.*" \
-      "numba==0.59.*" \
-      "onnx==1.16.*" \
-      "onnxruntime-gpu==1.19.*" \
-      "insightface>=0.7,<0.8" \
-      "imageio-ffmpeg>=0.4.9" \
-      sageattention
-
-# Note: Triton is bundled/managed by the torch wheel; installing a separate 'triton' can conflict with PyTorch.
-# If you truly need a standalone triton (rare), add it back with a matching version pin.
+      matplotlib scikit-image numba onnx onnxruntime-gpu insightface imageio-ffmpeg
 
 # --- ComfyUI-Manager dependencies (if it ships requirements) ---
 RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
@@ -92,8 +72,7 @@ RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
     python -m pip install --no-cache-dir -r "$REQ"; \
   else \
     python -m pip install --no-cache-dir \
-      "gitpython>=3.1.43" toml rich \
-      pygithub typer typing-extensions "matrix-client==0.4.0"; \
+      gitpython toml rich pygithub typer typing-extensions "matrix-client==0.4.0"; \
   fi'
 
 # --- Auto-install each custom node's requirements*.txt (requirements-first) ---
