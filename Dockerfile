@@ -41,6 +41,29 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir \
       "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
+      
+# --- ComfyUI dependencies (install its requirements with a NumPy 1.x guard) ---
+# Place this AFTER cloning /opt/ComfyUI and AFTER your PyTorch/cu121 install.
+RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
+  set -euo pipefail; \
+  # 1) Ensure a compatible NumPy is present before resolution
+  python -m pip install --no-cache-dir "numpy<2"; \
+  \
+  # 2) Install ComfyUI’s own requirements
+  python -m pip install --no-cache-dir -r /opt/ComfyUI/requirements.txt; \
+  \
+  # 3) Extras frequently requested at runtime (avoid Manager auto-installs)
+  python -m pip install --no-cache-dir \
+    "av>=12" \
+    alembic \
+    pydantic-settings \
+    comfyui-workflow-templates \
+    comfyui-embedded-docs \
+    kornia spandrel matplotlib insightface; \
+  \
+  # 4) Belt-and-braces: keep NumPy on 1.x if anything tried to bump it
+  python -m pip install --no-cache-dir --upgrade "numpy==1.26.4" --no-deps \
+'
 
 # --- Audio & SDE + Video I/O (fixes import errors / warnings) ---
 # Use extra-index so PyPI remains primary (for torchsde/av), while PyTorch CUDA wheels are available.
@@ -49,7 +72,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       --extra-index-url https://download.pytorch.org/whl/cu121 \
       torchaudio==2.4.0+cu121 \
       torchsde==0.2.6 \
-      "av>=10,<12"
+      "av>=12"
 
 # --- Core scientific/video deps (pin NumPy < 2; headless OpenCV) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
