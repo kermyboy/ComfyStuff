@@ -77,13 +77,15 @@ RUN --mount=type=cache,target=/root/.cache/git \
 # --- Extras for custom nodes that failed in logs ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir \
-      "matplotlib==3.8.*" \        
-      "scikit-image==0.24.*" \     
-      "numba==0.59.*" \            
-      "onnx==1.16.*" \             
-      "onnxruntime-gpu==1.19.*" \  
-      "insightface>=0.7,<0.8" \    
-      "imageio-ffmpeg>=0.4.9"      
+      "matplotlib==3.8.*" \
+      "scikit-image==0.24.*" \
+      "numba==0.59.*" \
+      "onnx==1.16.*" \
+      "onnxruntime-gpu==1.19.*" \
+      "insightface>=0.7,<0.8" \
+      "imageio-ffmpeg>=0.4.9" \
+      sageattention \
+      triton
       
 # --- ComfyUI-Manager dependencies (if it ships requirements) ---
 RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
