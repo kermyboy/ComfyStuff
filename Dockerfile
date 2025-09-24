@@ -42,9 +42,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
-# --- SDE sampler (fixes the crash) ---
+# --- SDE sampler (fixes ComfyUI crash) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir torchsde==0.2.5
+    python -m pip install --no-cache-dir torchsde==0.2.6
+
 
     
 # --- Core scientific/video deps (pin NumPy < 2; headless OpenCV) ---
