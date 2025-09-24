@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/git \
 # --- Cover common custom-node gaps (from your logs) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir \
-      matplotlib scikit-image numba onnx onnxruntime-gpu insightface imageio-ffmpeg
+      matplotlib scikit-image numba onnx onnxruntime-gpu insightface imageio-ffmpeg sageattention
 
 # --- ComfyUI-Manager dependencies (if it ships requirements) ---
 RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
