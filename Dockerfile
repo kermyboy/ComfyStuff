@@ -42,12 +42,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" \
       --index-url https://download.pytorch.org/whl/cu121
 
-# --- SDE sampler (fixes ComfyUI crash) ---
+# --- Audio & SDE + Video I/O (fixes import errors / warnings) ---
+# Use extra-index so PyPI remains primary (for torchsde/av), while PyTorch CUDA wheels are available.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir torchsde==0.2.6
+    python -m pip install --no-cache-dir \
+      --extra-index-url https://download.pytorch.org/whl/cu121 \
+      torchaudio==2.4.0+cu121 \
+      torchsde==0.2.6 \
+      "av>=10,<12"
 
-
-    
 # --- Core scientific/video deps (pin NumPy < 2; headless OpenCV) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir \
@@ -74,6 +77,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir jupyterlab uv
 
+# --- Reassert safe numeric stack (defend against accidental NumPy 2 upgrades) ---
+# Place this AFTER all other pip installs that might pull numpy, so it "wins".
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --no-cache-dir --upgrade \
+      "numpy==1.26.4" \
+      "opencv-python-headless==4.9.0.80" \
+      "onnxruntime-gpu==1.18.1" --force-reinstall --no-deps
 
 # --- Custom nodes (seeded into image) ---
 WORKDIR /opt/ComfyUI/custom_nodes
@@ -96,14 +106,13 @@ RUN --mount=type=cache,target=/root/.cache/pip bash -lc '\
       gitpython>=3.1.43 toml rich \
       pygithub typer typing-extensions matrix-client==0.4.0; \
   fi'
-# --- Make package managers visible to Manager ---
 
+# --- Make package managers visible to Manager ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir uv && \
     ln -sf /usr/bin/pip3 /usr/local/bin/pip || true && \
     ln -sf /usr/bin/pip3 /usr/bin/pip || true && \
     ln -sf /usr/bin/python3.11 /usr/local/bin/python || true
-
 
 # --- Install WanVideoWrapper requirements explicitly (future-proof) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -121,6 +130,9 @@ VOLUME ["/workspace"]
 # --- Healthcheck (ComfyUI HTTP server) ---
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost:8188/ || exit 1
+
+# --- Keep uv quiet about hardlinks ---
+ENV UV_LINK_MODE=copy
 
 # --- Startup ---
 WORKDIR /workspace
