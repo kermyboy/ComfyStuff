@@ -16,15 +16,6 @@ export HF_HOME=${HF_HOME:-/workspace/.cache/huggingface}
 command -v python >/dev/null || ln -sf /usr/bin/python3.11 /usr/bin/python
 command -v pip >/dev/null || ln -sf /usr/bin/pip3 /usr/bin/pip
 
-# Guard against runtime upgrades that would pull NumPy 2 or GUI OpenCV
-python - <<'PY'
-import subprocess, sys
-def pip(*args): subprocess.check_call([sys.executable, "-m", "pip", *args])
-pip("install","--no-cache-dir","--upgrade","numpy<2","opencv-python-headless==4.9.0.80")
-try: subprocess.check_call([sys.executable,"-m","pip","uninstall","-y","opencv-python"])
-except subprocess.CalledProcessError: pass
-PY
-
 # Workspace structure (Wan-focused)
 mkdir -p /workspace/{input,output,user/default/workflows,custom_nodes}
 mkdir -p /workspace/models/{diffusion_models,vae,clip,clip_vision,text_encoders,wan}
