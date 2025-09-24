@@ -44,4 +44,4 @@ fi
 
 cd /opt/ComfyUI
 echo "Starting ComfyUI on 0.0.0.0:${COMFY_PORT} ${COMFY_ARGS}"
-exec python main.py --listen 0.0.0.0 --port "${COMFY_PORT}" ${COMFY_ARGS}
+exec /usr/bin/python3.11 main.py --listen 0.0.0.0 --port "${COMFY_PORT}" ${COMFY_ARGS}
