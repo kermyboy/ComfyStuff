@@ -36,16 +36,13 @@ WORKDIR /opt/ComfyUI
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip setuptools wheel "cython<3"
 
-# --- PyTorch (latest stable for CUDA 12.1) ---
-# If you ever need very new flags/APIs, switch to the NIGHTLY cu121 channel:
-#   add: --pre
-#   swap index: https://download.pytorch.org/whl/nightly/cu121
+# --- PyTorch (nightly with CUDA 12.1) ---
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir --upgrade \
-      --index-url https://download.pytorch.org/whl/cu121 \
-      torch torchvision torchaudio
+    python -m pip install --no-cache-dir --upgrade --pre \
+      --index-url https://download.pytorch.org/whl/nightly/cu121 \
+      torch torchvision torchaudio 
 
-# --- Install ComfyUI dependencies ---
+ # --- Install ComfyUI dependencies ---
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir -r /opt/ComfyUI/requirements.txt
 
