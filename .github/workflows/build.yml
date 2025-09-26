@@ -31,14 +31,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Free disk space BEFORE the build
+      # Free disk space BEFORE the build (aggressive but safe for GitHub-hosted runners)
       - name: Free disk space (safe)
         shell: bash
         run: |
           echo "Disk before cleanup:" && df -h
+
+          # Prune Docker stuff first
           docker system prune -af || true
           docker volume prune -f || true
           docker builder prune -af || true
+
+          # Remove large preinstalled SDKs/tools we don't use
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/.ghcup || true
+          sudo rm -rf /opt/hostedtoolcache || true
+
+          # Clean apt caches
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+
           echo "Disk after cleanup:" && df -h
 
       - name: Check required secrets
@@ -94,4 +108,4 @@ jobs:
         if: always()
         run: |
           docker builder prune -af || true
-          docker system df
+          docker system df || true
