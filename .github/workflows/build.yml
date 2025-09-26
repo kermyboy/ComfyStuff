@@ -5,13 +5,17 @@ on:
   push:
     branches: [ "main" ]
     tags:
-      - "v*"            # e.g. v6, v6.1, v6.1.0
+      - "v*"   # e.g. v6, v6.1, v6.1.0
   workflow_dispatch:
     inputs:
       version:
         description: "Optional version tag to publish (e.g. v6)"
         required: false
         type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docker:
@@ -20,11 +24,22 @@ jobs:
       contents: read
       packages: write
       id-token: write
+
     env:
       IMAGE_REPO: kermatron/comfystuff
 
     steps:
       - uses: actions/checkout@v4
+
+      # Free disk space BEFORE the build
+      - name: Free disk space (safe)
+        shell: bash
+        run: |
+          echo "Disk before cleanup:" && df -h
+          docker system prune -af || true
+          docker volume prune -f || true
+          docker builder prune -af || true
+          echo "Disk after cleanup:" && df -h
 
       - name: Check required secrets
         shell: bash
@@ -50,11 +65,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_REPO }}
           tags: |
-            # Tag events like "v6" -> publish :v6
             type=ref,event=tag
-            # latest on default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # manual run override
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
 
       - name: Show computed tags
@@ -62,6 +74,7 @@ jobs:
           echo "Tags: ${{ steps.meta.outputs.tags }}"
           echo "Labels: ${{ steps.meta.outputs.labels }}"
 
+      # Build AND push in one step (best for disk usage)
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -70,7 +83,15 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Use GHA cache but keep it small to avoid bloat
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
           provenance: false
           sbom: false
+
+      # Drop any leftover builder cache on the runner
+      - name: Clean builder cache (post-build)
+        if: always()
+        run: |
+          docker builder prune -af || true
+          docker system df
